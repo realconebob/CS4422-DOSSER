@@ -40,6 +40,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdint.h>
 #include <stdio.h>
 #include <argp.h>
+#include <stdlib.h>
 
 const char* argp_program_version = "0.1";
 const char* argp_program_bug_address = "walst110@umn.edu";
@@ -54,7 +55,7 @@ const struct argp_option options[] = {
 
 struct inputs {
     char* ip;
-    uint32_t dport, prstart, prend;
+    int32_t dport, prstart, prend;
 };
 
 error_t parserfunc(int key, char *arg, struct argp_state *state) {
@@ -62,15 +63,35 @@ error_t parserfunc(int key, char *arg, struct argp_state *state) {
     switch (key) {
         case 'i': // set ip
         passed->ip = arg;
+        printf("Set ip: %s\n", passed->ip);
         break;
 
         case 'p': // set dest port
+        passed->dport = atoi(arg);
+        printf("Set dest port: %d\n", passed->dport);
         break;
 
         case 's': // set port range start
+        passed->prstart = atoi(arg);
+        printf("Set pr start: %d\n", passed->prstart);
         break;
 
         case 'e': // set port range end
+        passed->prend = atoi(arg);
+        printf("Set pr end: %d\n", passed->prend);
+        break;
+
+        case ARGP_KEY_ARG:
+        if(state->arg_num) argp_error(state, "non-option arguments are not allowed"); // Don't want any non-option arguments
+        break;
+
+        case ARGP_KEY_END:
+        // Check that everything has been set
+        if(!passed->ip) argp_error(state, "target ip not set");
+        if(!passed->dport) argp_error(state, "target port not set");
+        if(!passed->prstart) argp_error(state, "port range start not set");
+        if(!passed->prend) argp_error(state, "port range end not set");
+        if(passed->prend < passed->prstart) argp_error(state, "port range end lower than start");
         break;
 
         default:
