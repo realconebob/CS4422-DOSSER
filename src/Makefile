@@ -2,7 +2,9 @@ CC := /usr/bin/gcc
 SHELL := /usr/bin/env
 .SHELLFLAGS := -S bash -c
 
-CFLAGS := -std=gnu2x
+CFLAGS := -std=gnu2x $$(pkg-config --cflags libevent)
+LDFLAGS := $$(pkg-config --libs libevent)
+
 DEBUG_CFLAGS := -Wall -Wextra -Wpedantic -Og -ggdb -g3 -fsanitize=address,undefined -fanalyzer -Wanalyzer-too-complex
 RELEASE_CFLAGS := -O3 -DNDEBUG -march=native -flto=auto
 RELEASE_LDFLAGS := -flto=auto

@@ -2,7 +2,7 @@ CC := /usr/bin/gcc
 SHELL := /usr/bin/env
 .SHELLFLAGS := -S bash -c
 
-.PHONY: debug release c clean v val
+.PHONY: debug release c clean v val deps
 .DELETE_ON_ERROR:
 .ONESHELL:
 
@@ -18,3 +18,7 @@ c clean:
 
 v val:
 	${MAKE} -C src val -j
+
+deps:
+	@echo "You will need libevent and pkg-config to use this project correctly. This command assumes you're on a Debian/Ubuntu system"
+	sudo apt install libevent-dev pkg-config
