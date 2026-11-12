@@ -13,7 +13,7 @@ DEFS := -D_GNU_SOURCE=1
 DEBUG_DEFS := -DDEBUG=1
 RELEASE_DEFS := -DRELEASE=1
 
-TARGET := dosser
+TARGETS := dosser server
 
 .PHONY: debug release c clean v val
 .DELETE_ON_ERROR:
@@ -25,14 +25,14 @@ release: DEFS += ${RELEASE_DEFS}
 release: CFLAGS += ${RELEASE_CFLAGS}
 release: LDFLAGS += ${RELEASE_LDFLAGS}
 
-debug: ${TARGET}
-release: ${TARGET}
+debug: ${TARGETS}
+release: ${TARGETS}
 
-${TARGET}: ${TARGET}.c
+${TARGETS}: %: %.c
 
 c clean:
-	rm -rvf ${TARGET}
+	rm -rvf ${TARGETS}
 
 v val:
 	${MAKE} debug -j
-	valgrind --leak-check=yes ./${TARGET}
+	valgrind --leak-check=yes ./${TARGETS}

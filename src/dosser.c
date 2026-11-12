@@ -39,6 +39,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <event2/event.h>
 #include <event2/bufferevent.h>
+#include <event2/util.h>
 
 // TODO: Really should put a version check in here but that can wait
 
@@ -49,6 +50,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <errno.h>
 #include <error.h>
 #include <signal.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <string.h>
 
 const char* argp_program_version = "0.1";
 const char* argp_program_bug_address = "<walst110@umn.edu>";
@@ -62,8 +67,8 @@ const struct argp_option options[] = {
 };
 
 struct inputs {
-    char* ip;
-    int32_t dport, prstart, prend;
+    char *ip, *dport;
+    ev_int32_t  prstart, prend;
 };
 
 error_t parserfunc(int key, char *arg, struct argp_state *state) {
@@ -75,8 +80,8 @@ error_t parserfunc(int key, char *arg, struct argp_state *state) {
         break;
 
         case 'p': // set dest port
-        passed->dport = atoi(arg);
-        printf("Set dest port: %d\n", passed->dport);
+        passed->dport = arg;
+        printf("Set dest port: %s\n", passed->dport);
         break;
 
         case 's': // set port range start
@@ -102,7 +107,6 @@ error_t parserfunc(int key, char *arg, struct argp_state *state) {
         if(!passed->prstart) argp_error(state, "port range start not set");
         if(!passed->prend) argp_error(state, "port range end not set");
 
-        if(passed->dport < 0) argp_error(state, "target port less than zero");
         if(passed->prstart < 0) argp_error(state, "port range start than zero");
         if(passed->prend < 0) argp_error(state, "port range end less than zero");
 
@@ -131,12 +135,28 @@ static void signal_cb(evutil_socket_t sig, short what, void *arg) {
 
 void writercb(evutil_socket_t fd, short what, void *arg) {
     (void)fd; (void)what; (void)arg;
+    int towrite = 0Xa1deadde;
+    write(fd, (void*)&towrite, sizeof(towrite));
+}
+
+char* goodstrcat(const char * const a, const char * const b) {
+    ssize_t len = 0;
+    for(const char *acpy = a; *acpy; acpy++) len++;
+    for(const char *bcpy = b; *bcpy; bcpy++) len++;
+
+    ssize_t idx = 0;
+    char* res = calloc(len + 1, sizeof(*res));
+    for(const char *acpy = a; *acpy; acpy++) res[idx++] = *acpy;
+    for(const char *bcpy = b; *bcpy; bcpy++) res[idx++] = *bcpy;
+    res[len] = '\0';
+
+    return res;
 }
 
 int main(int argc, char *argv[]) {
     int res = 0;
-    int32_t bea_size = 0;
-    struct bufferevent** evs = NULL;
+    ev_int32_t bea_size = 0;
+    struct event** evs = NULL;
 
     // Parse arguments
     struct inputs parseres = {0};
@@ -144,13 +164,17 @@ int main(int argc, char *argv[]) {
         error(1, EINVAL, "%s: Could not parse input", argv[0]);
     }
 
+    // Concat port and ip into a single string
+    char* partialip = goodstrcat(parseres.ip, ":");
+    char* fullip = goodstrcat(partialip, parseres.dport);
+    free(partialip);
+
     // Set up libevent
     struct event_base* base = event_base_new();
     if(!base) error(1, errno, "Could not get event base");
     printf("Running libevent version %s, backend: %s\n", event_get_version(), event_base_get_method(base));
 
     // Create and add ctrl+c close signal
-
     struct event* ctrlc_ev = evsignal_new(base, SIGINT, signal_cb, base);
     if(!ctrlc_ev || event_add(ctrlc_ev, NULL) < 0) {
         error(0, errno, "Could not create ctrl+c signal event");
@@ -159,19 +183,35 @@ int main(int argc, char *argv[]) {
     }
 
     // Create events, one per port in given range
-    bea_size = parseres.prend - parseres.prstart;
-    evs = calloc(bea_size + 1, sizeof(struct bufferevent*));
-    if(!evs) {error(0, errno, "Could not create bufferevent* array"); goto cleanup;}
+    bea_size = parseres.prend - parseres.prstart + 1;
+    evs = calloc(bea_size + 1, sizeof(struct event*));
+    if(!evs) {error(0, errno, "Could not create bufferevent* array"); res = 1; goto cleanup;}
     evs[bea_size] = NULL;
 
-    for(int32_t i = 0; i < bea_size; i++) {/* Make and bind individual connections here */}
+    for(ev_int32_t i = 0; i < bea_size; i++) {
+        /* Make and bind individual connections here */
+        struct sockaddr_storage out = {0};
+        int outlen = sizeof(out);
+        evutil_parse_sockaddr_port(fullip, (struct sockaddr *)&out, &outlen);
+        evutil_socket_t fd = socket(out.ss_family, SOCK_STREAM, 0);
+        evutil_make_socket_nonblocking(fd);
+        if (connect(fd, (struct sockaddr *)&out, outlen) < 0 && errno != EINPROGRESS) {
+            error(1, errno, "connect to port %s", parseres.dport);
+            close(fd);
+        }
+
+        evs[i] = event_new(base, fd, EV_WRITE|EV_PERSIST, writercb, NULL);
+        event_add(evs[i], NULL);
+        event_active(evs[i], EV_WRITE, 0);
+    }
 
     event_base_loop(base, EVLOOP_NO_EXIT_ON_EMPTY);
 
 cleanup:
+    free(fullip);
     event_free(ctrlc_ev);
 
-    for(int32_t i = 0; i < bea_size; i++) {bufferevent_free(evs[i]);}
+    for(ev_int32_t i = 0; i < bea_size; i++) {event_free(evs[i]);}
     free(evs);
 
     event_base_free(base);
