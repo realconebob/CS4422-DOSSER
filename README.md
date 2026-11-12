@@ -18,7 +18,6 @@ The Makefile in this directory has 4 options:
 ```bash
 make debug      # Build with debug options (compiler warnings, debugging symbols for gdb, asan)
 make release    # Build with optimization options (-O3, no warnings)
-make {v,val}    # Build debug binary and run it through valgrind
 make {c,clean}  # Clean src dir
 ```
 
